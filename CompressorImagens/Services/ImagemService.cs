@@ -4,7 +4,7 @@ namespace CompressorImagens.Services
 {
     public class ImagemService
     {
-        private readonly string _diretorioImagens = Path.Combine(Directory.GetCurrentDirectory(), "Imagens");
+        private readonly string _diretorioImagens = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
 
         public ImagemService()
         {

@@ -1,6 +1,10 @@
 ﻿using CompressorImagens.Models;
 using CompressorImagens.Services;
 using Microsoft.AspNetCore.Mvc;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Processing;
 
 namespace CompressorImagens.Controllers
 {
@@ -9,6 +13,7 @@ namespace CompressorImagens.Controllers
     public class ImagemController : ControllerBase
     {
         private readonly ImagemService _imagemService;
+        private readonly string _uploadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
 
         public ImagemController(ImagemService imagemService)
         {
@@ -23,8 +28,8 @@ namespace CompressorImagens.Controllers
                 return BadRequest("Nenhuma imagem foi enviada.");
             }
 
-            // Verifica a extensão do arquivo (opcional)
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
+            // Extensões do arquivo permitidos para upload
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
             var fileExtension = Path.GetExtension(file.FileName).ToLower();
 
             if (!allowedExtensions.Contains(fileExtension))
@@ -32,22 +37,44 @@ namespace CompressorImagens.Controllers
                 return BadRequest("Tipo de arquivo inválido. Apenas imagens são permitidas.");
             }
 
-            // Caminho onde a imagem será salva
-            var filePath = Path.Combine(Directory.GetCurrentDirectory(), "Uploads", file.FileName);
-
-            // Cria o diretório 'Uploads' se ele não existir
-            if (!Directory.Exists(Path.Combine(Directory.GetCurrentDirectory(), "Uploads")))
+            // Cria o diretório se ele não existir
+            if (!Directory.Exists(_uploadDirectory))
             {
-                Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "Uploads"));
+                Directory.CreateDirectory(_uploadDirectory);
             }
 
-            // Salva o arquivo
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            // Gerar um ID com o guid para a imagem
+            var id = Guid.NewGuid();
+            var caminhoImagem = Path.Combine(_uploadDirectory, id.ToString() + fileExtension);
+
+            using (var image = await Image.LoadAsync(file.OpenReadStream()))
             {
-                await file.CopyToAsync(stream);
+                // Comprimir a imagem 
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(1024, 0)
+                }));
+
+                if (fileExtension == ".png")
+                {
+                    await image.SaveAsync(caminhoImagem, new PngEncoder());
+                }
+                else if (fileExtension == ".jpg" || fileExtension == ".jpeg")
+                {
+                    await image.SaveAsync(caminhoImagem, new JpegEncoder());
+                }
             }
 
-            return Ok(new { FilePath = filePath });
+            var imagemSalva = new Imagem
+            {
+                Id = id,
+                Nome = file.FileName,
+                Caminho = caminhoImagem,
+                DataUpload = DateTime.Now
+            };
+
+            return Ok(new { ImagemSalva = imagemSalva });
         }
 
         [HttpGet]
@@ -100,5 +127,51 @@ namespace CompressorImagens.Controllers
                 return StatusCode(500, $"Erro ao excluir a imagem: {ex.Message}");
             }
         }
+
+        [HttpGet("recuperarImagem/{imageName}")]
+        public async Task<IActionResult> RecuperarImagem(string imageName, [FromQuery] bool compress = false)
+        {
+            // Caminho da imagem
+            var imagePath = Path.Combine(_uploadDirectory, imageName);
+
+            // Verifica se existe
+            if (!System.IO.File.Exists(imagePath))
+            {
+                return NotFound("Imagem não encontrada.");
+            }
+
+            // Carrega a imagem
+            using (var image = await Image.LoadAsync(imagePath))
+            {
+                // Se o parâmetro 'compress' for verdadeiro, redimensiona a imagem
+                if (compress)
+                {
+                    image.Mutate(x => x.Resize(new ResizeOptions
+                    {
+                        Mode = ResizeMode.Max,
+                        Size = new Size(1024, 0) // Limita a largura para 1024px
+                    }));
+                }
+
+                // Retorna a imagem com o tipo adequado (PNG ou JPG)
+                var fileExtension = Path.GetExtension(imageName).ToLower();
+                var memoryStream = new MemoryStream();
+
+                if (fileExtension == ".png")
+                {
+                    await image.SaveAsync(memoryStream, new PngEncoder());
+                }
+                else if (fileExtension == ".jpg" || fileExtension == ".jpeg")
+                {
+                    await image.SaveAsync(memoryStream, new JpegEncoder());
+                }
+
+                memoryStream.Seek(0, SeekOrigin.Begin);
+
+                // Retorna a imagem como resposta
+                return File(memoryStream, "image/" + fileExtension.TrimStart('.'));
+            }
+        }
+
     }
 }
