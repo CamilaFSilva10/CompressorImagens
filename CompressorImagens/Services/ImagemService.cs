@@ -1,4 +1,8 @@
 ﻿using CompressorImagens.Models;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Processing;
 
 namespace CompressorImagens.Services
 {
@@ -17,7 +21,27 @@ namespace CompressorImagens.Services
         public async Task<Imagem> UploadImagemAsync(Imagem arquivo)
         {
             var id = Guid.NewGuid();
-            var caminhoImagem = Path.Combine(_diretorioImagens, id.ToString() + Path.GetExtension(arquivo.File.FileName));
+            var extension = Path.GetExtension(arquivo.File.FileName);
+            var caminhoImagem = Path.Combine(_diretorioImagens, id.ToString() + extension);
+            
+            using (var image = await Image.LoadAsync(arquivo.File.OpenReadStream()))
+            {
+                // Comprimir a imagem 
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(1024, 0)
+                }));
+
+                if (extension == ".png")
+                {
+                    await image.SaveAsync(caminhoImagem, new PngEncoder());
+                }
+                else if (extension == ".jpg" || extension == ".jpeg")
+                {
+                    await image.SaveAsync(caminhoImagem, new JpegEncoder());
+                }
+            }
 
             var imagemSalva = new Imagem
             {
@@ -44,9 +68,9 @@ namespace CompressorImagens.Services
             return imagens;
         }
 
-        public async Task<Imagem> AtualizarImagemAsync(Guid id, Imagem arquivo)
+        public async Task<Imagem> AtualizarImagemAsync(string id, Imagem arquivo)
         {
-            var imagemExistente = ListarImagens().FirstOrDefault(i => i.Id == id);
+            var imagemExistente = ListarImagens().FirstOrDefault(i => i.Id == Guid.Parse(id));
             if (imagemExistente == null) return null;
 
             // Deletar imagem existente
@@ -54,14 +78,14 @@ namespace CompressorImagens.Services
 
             // Fazer upload da nova imagem
             var novaImagem = await UploadImagemAsync(arquivo);
-            novaImagem.Id = id;
+            novaImagem.Id = Guid.Parse(id);
 
             return novaImagem;
         }
 
-        public bool ExcluirImagem(Guid id)
+        public bool ExcluirImagem(string id)
         {
-            var imagem = ListarImagens().FirstOrDefault(i => i.Id == id);
+            var imagem = ListarImagens().FirstOrDefault(i => i.Id == Guid.Parse(id));
             if (imagem == null) return false;
 
             File.Delete(imagem.Caminho);

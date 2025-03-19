@@ -43,38 +43,14 @@ namespace CompressorImagens.Controllers
                 Directory.CreateDirectory(_uploadDirectory);
             }
 
-            // Gerar um ID com o guid para a imagem
-            var id = Guid.NewGuid();
-            var caminhoImagem = Path.Combine(_uploadDirectory, id.ToString() + fileExtension);
-
-            using (var image = await Image.LoadAsync(file.OpenReadStream()))
+            var imagem = new Imagem
             {
-                // Comprimir a imagem 
-                image.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Mode = ResizeMode.Max,
-                    Size = new Size(1024, 0)
-                }));
-
-                if (fileExtension == ".png")
-                {
-                    await image.SaveAsync(caminhoImagem, new PngEncoder());
-                }
-                else if (fileExtension == ".jpg" || fileExtension == ".jpeg")
-                {
-                    await image.SaveAsync(caminhoImagem, new JpegEncoder());
-                }
-            }
-
-            var imagemSalva = new Imagem
-            {
-                Id = id,
-                Nome = file.FileName,
-                Caminho = caminhoImagem,
-                DataUpload = DateTime.Now
+                File = file,
             };
 
-            return Ok(new { ImagemSalva = imagemSalva });
+            _imagemService.UploadImagemAsync(imagem);
+
+            return Ok("Upload concluído!");
         }
 
         [HttpGet]
@@ -91,15 +67,12 @@ namespace CompressorImagens.Controllers
             }
         }
 
-        [HttpPut("{id}")]
-        public async Task<ActionResult<Imagem>> AtualizarImagem(Guid id, Imagem arquivo)
+        [HttpPut("{idImg}")]
+        public async Task<ActionResult<Imagem>> AtualizarImagem(string idImg, Imagem imagem)
         {
-            if (arquivo == null || arquivo.File.Length == 0)
-                return BadRequest("Nenhuma imagem fornecida.");
-
             try
             {
-                var imagemAtualizada = await _imagemService.AtualizarImagemAsync(id, arquivo);
+                var imagemAtualizada = await _imagemService.AtualizarImagemAsync(idImg, imagem);
                 if (imagemAtualizada == null)
                     return NotFound("Imagem não encontrada.");
 
@@ -112,7 +85,7 @@ namespace CompressorImagens.Controllers
         }
 
         [HttpDelete("{id}")]
-        public ActionResult ExcluirImagem(Guid id)
+        public ActionResult ExcluirImagem(string id)
         {
             try
             {
